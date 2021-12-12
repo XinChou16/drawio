@@ -94,60 +94,29 @@ EditorUi = function(editor, container, lightbox)
 		{
 			try
 			{
-				var state = graph.view.getState(cell);
-				
-				if (state != null)
+				var style = graph.getCellStyle(cell, false);
+				var values = [];
+				var keys = [];
+
+				for (var key in style)
 				{
-					// Ignores default styles
-					var clone = cell.clone();
-					clone.style = ''
-					var defaultStyle = graph.getCellStyle(clone);
-					var values = [];
-					var keys = [];
-		
-					for (var key in state.style)
-					{
-						if (defaultStyle[key] != state.style[key])
-						{
-							values.push(state.style[key]);
-							keys.push(key);
-						}
-					}
-					
-					// Handles special case for value "none"
-					var cellStyle = graph.getModel().getStyle(state.cell);
-					var tokens = (cellStyle != null) ? cellStyle.split(';') : [];
-					
-					for (var i = 0; i < tokens.length; i++)
-					{
-						var tmp = tokens[i];
-				 		var pos = tmp.indexOf('=');
-				 					 		
-				 		if (pos >= 0)
-				 		{
-				 			var key = tmp.substring(0, pos);
-				 			var value = tmp.substring(pos + 1);
-				 			
-				 			if (defaultStyle[key] != null && value == 'none')
-				 			{
-				 				values.push(value);
-				 				keys.push(key);
-				 			}
-				 		}
-					}
-		
-					// Resets current style
-					if (graph.getModel().isEdge(state.cell))
-					{
-						graph.currentEdgeStyle = {};
-					}
-					else
-					{
-						graph.currentVertexStyle = {}
-					}
-		
-					this.fireEvent(new mxEventObject('styleChanged', 'keys', keys, 'values', values, 'cells', [state.cell]));
+					values.push(style[key]);
+					keys.push(key);
 				}
+
+				// Resets current style
+				if (graph.getModel().isEdge(cell))
+				{
+					graph.currentEdgeStyle = {};
+				}
+				else
+				{
+					graph.currentVertexStyle = {}
+				}
+	
+				this.fireEvent(new mxEventObject('styleChanged',
+					'keys', keys, 'values', values,
+					'cells', [cell]));
 			}
 			catch (e)
 			{
@@ -233,7 +202,6 @@ EditorUi = function(editor, container, lightbox)
 				for (var i = 0; i < cells.length; i++)
 				{
 					var cell = cells[i];
-
 					var appliedStyles;
 
 					if (asText)
@@ -304,7 +272,7 @@ EditorUi = function(editor, container, lightbox)
 							}
 						}
 					}
-					
+
 					if (Editor.simpleLabels)
 					{
 						newStyle = mxUtils.setStyle(mxUtils.setStyle(
@@ -2843,8 +2811,8 @@ EditorUi.prototype.initCanvas = function()
 		                dx = graph.container.offsetWidth / 2 - cursorPosition.x + offset.x;
 		                dy = graph.container.offsetHeight / 2 - cursorPosition.y + offset.y;
 		            }
-	
-		            graph.zoom(graph.cumulativeZoomFactor);
+
+					graph.zoom(graph.cumulativeZoomFactor, null, 20);
 		            var s = graph.view.scale;
 		            
 		            if (s != prev)
@@ -2884,10 +2852,10 @@ EditorUi.prototype.initCanvas = function()
 		}, 0);
 	};
 	
-	var lastZoomEvent = Date.now();
-
-	graph.lazyZoom = function(zoomIn, ignoreCursorPosition, delay)
+	graph.lazyZoom = function(zoomIn, ignoreCursorPosition, delay, factor)
 	{
+		factor = (factor != null) ? factor : this.zoomFactor;
+
 		// TODO: Fix ignored cursor position if scrollbars are disabled
 		ignoreCursorPosition = ignoreCursorPosition || !graph.scrollbars;
 		
@@ -2898,14 +2866,6 @@ EditorUi.prototype.initCanvas = function()
 				graph.container.offsetTop + graph.container.clientHeight / 2);
 		}
 		
-		// Ignores events to reduce touchpad and magic mouse zoom speed
-		if (!mxClient.IS_IOS && Date.now() - lastZoomEvent < 15)
-		{
-			return;
-		}
-		
-		lastZoomEvent = Date.now();
-
 		// Switches to 5% zoom steps below 15%
 		if (zoomIn)
 		{
@@ -2915,10 +2875,8 @@ EditorUi.prototype.initCanvas = function()
 			}
 			else
 			{
-				// Uses to 5% zoom steps for better grid rendering in webkit
-				// and to avoid rounding errors for zoom steps
-				this.cumulativeZoomFactor *= this.zoomFactor;
-				this.cumulativeZoomFactor = Math.round(this.view.scale * this.cumulativeZoomFactor * 20) / 20 / this.view.scale;
+				this.cumulativeZoomFactor *= factor;
+				this.cumulativeZoomFactor = Math.round(this.view.scale * this.cumulativeZoomFactor * 100) / 100 / this.view.scale;
 			}
 		}
 		else
@@ -2929,10 +2887,8 @@ EditorUi.prototype.initCanvas = function()
 			}
 			else
 			{
-				// Uses to 5% zoom steps for better grid rendering in webkit
-				// and to avoid rounding errors for zoom steps
-				this.cumulativeZoomFactor /= this.zoomFactor;
-				this.cumulativeZoomFactor = Math.round(this.view.scale * this.cumulativeZoomFactor * 20) / 20 / this.view.scale;
+				this.cumulativeZoomFactor /= factor;
+				this.cumulativeZoomFactor = Math.round(this.view.scale * this.cumulativeZoomFactor * 100) / 100 / this.view.scale;
 			}
 		}
 
@@ -3032,7 +2988,7 @@ EditorUi.prototype.initCanvas = function()
 			else if (force || graph.isZoomWheelEvent(evt))
 			{
 				var source = mxEvent.getSource(evt);
-				
+
 				while (source != null)
 				{
 					if (source == graph.container)
@@ -3041,7 +2997,15 @@ EditorUi.prototype.initCanvas = function()
 						cursorPosition = (cx != null && cy!= null) ? new mxPoint(cx, cy) :
 							new mxPoint(mxEvent.getClientX(evt), mxEvent.getClientY(evt));
 						forcedZoom = force;
-						graph.lazyZoom(up);
+						var factor = graph.zoomFactor;
+
+						// Slower zoom for pinch gesture on trackpad
+						if (evt.deltaY != null && Math.round(evt.deltaY) != evt.deltaY)
+						{
+							factor = 1 + (Math.abs(evt.deltaY) / 20) * (factor - 1);
+						}
+
+						graph.lazyZoom(up, null, null, factor);
 						mxEvent.consume(evt);
 				
 						return false;

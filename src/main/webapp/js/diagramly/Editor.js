@@ -401,15 +401,13 @@
         {
         	var graph = format.editorUi.editor.graph;
         	
-    		return urlParams['test'] == '1' && state.vertices.length == 1 &&
-				state.edges.length == 0 && graph.isTableCell(state.vertices[0]);
+    		return state.vertices.length == 1 && state.edges.length == 0 && graph.isTableCell(state.vertices[0]);
         }},
         {name: 'rowspan', dispName: 'Rowspan', type: 'int', min: 1, defVal: 1, isVisible: function(state, format)
         {
         	var graph = format.editorUi.editor.graph;
         	
-    		return urlParams['test'] == '1' && state.vertices.length == 1 &&
-				state.edges.length == 0 && graph.isTableCell(state.vertices[0]);
+    		return state.vertices.length == 1 && state.edges.length == 0 && graph.isTableCell(state.vertices[0]);
         }},
         {type: 'separator'},
         {name: 'resizeLastRow', dispName: 'Resize Last Row', type: 'bool', getDefaultValue: function(state, format)
@@ -2328,7 +2326,6 @@
 				if (tmp != null && tmp.length > 0)
 				{
 					var node = mxUtils.parseXml(tmp).documentElement;
-					
 					
 					return node.nodeName == 'mxfile' || node.nodeName == 'mxGraphModel';
 				}
@@ -5853,43 +5850,9 @@
 	 * Adds support for custom fonts in cell styles.
 	 */
 	var graphPostProcessCellStyle = Graph.prototype.postProcessCellStyle;
-	Graph.prototype.postProcessCellStyle = function(style)
+	Graph.prototype.postProcessCellStyle = function(cell, style)
 	{
-		this.replaceDefaultColors(style);
-
 		return Graph.processFontStyle(graphPostProcessCellStyle.apply(this, arguments));
-	};
-
-	/**
-	 * Replaces default colors. 
-	 */
-	Graph.prototype.replaceDefaultColors = function(style)
-	{
-		if (style != null)
-		{
-			var bg = mxUtils.hex2rgb(this.shapeBackgroundColor);
-			var fg = mxUtils.hex2rgb(this.shapeForegroundColor);
-
-			this.replaceDefaultColor(style, mxConstants.STYLE_FONTCOLOR, fg);
-			this.replaceDefaultColor(style, mxConstants.STYLE_FILLCOLOR, bg);
-			this.replaceDefaultColor(style, mxConstants.STYLE_STROKECOLOR, fg);
-			this.replaceDefaultColor(style, mxConstants.STYLE_IMAGE_BORDER, fg);
-			this.replaceDefaultColor(style, mxConstants.STYLE_IMAGE_BACKGROUND, bg);
-			this.replaceDefaultColor(style, mxConstants.STYLE_LABEL_BORDERCOLOR, fg);
-			this.replaceDefaultColor(style, mxConstants.STYLE_SWIMLANE_FILLCOLOR, bg);
-			this.replaceDefaultColor(style, mxConstants.STYLE_LABEL_BACKGROUNDCOLOR, bg);
-		}
-	};
-
-	/**
-	 * Replaces the colors for the given key.
-	 */
-	Graph.prototype.replaceDefaultColor = function(style, key, value)
-	{
-		if (style != null && style[key] == 'default' && value != null)
-		{
-			style[key] = value;
-		}
 	};
 
 	/**

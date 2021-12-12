@@ -255,7 +255,6 @@ mxImageShape.prototype.getImageDataUri = function()
 	return src;
 };
 
-
 /**
  * Constructs a new graph instance. Note that the constructor does not take a
  * container because the graph instance is needed for creating the UI, which
@@ -1592,6 +1591,20 @@ Graph.fadeNodes = function(nodes, start, end, done, delay)
 };
 
 /**
+ * Removes the elements from the map where the given function returns true.
+ */
+Graph.removeKeys = function(map, ignoreFn)
+{
+	for (var key in map)
+	{
+		if (ignoreFn(key))
+		{
+			delete map[key];
+		}
+	}
+};
+
+/**
  * Sets the transition for the given nodes.
  */
 Graph.setTransitionForNodes = function(nodes, transition)
@@ -2274,65 +2287,53 @@ Graph.prototype.init = function(container)
 		
 		return cell;
 	};
-		
+
 	/**
-	 * Returns true if fast zoom preview should be used.
+	 * Returns the style of the given cell as an object.
 	 */
 	Graph.prototype.copyStyle = function(cell)
 	{
-		var style = null;
-		
-		if (cell != null)
-		{
-			style = mxUtils.clone(this.getCurrentCellStyle(cell));
-			
-			// Handles special case for value "none"
-			var cellStyle = this.model.getStyle(cell);
-			var tokens = (cellStyle != null) ? cellStyle.split(';') : [];
-			
-			for (var j = 0; j < tokens.length; j++)
-			{
-				var tmp = tokens[j];
-		 		var pos = tmp.indexOf('=');
-		 					 		
-		 		if (pos >= 0)
-		 		{
-		 			var key = tmp.substring(0, pos);
-		 			var value = tmp.substring(pos + 1);
-		 			
-		 			if (style[key] == null && value == mxConstants.NONE)
-		 			{
-		 				style[key] = mxConstants.NONE;
-		 			}
-		 		}
-			}
-		}
-		
-		return style;
+		return this.getCellStyle(cell, false);
 	};
-	
+
 	/**
 	 * Returns true if fast zoom preview should be used.
 	 */
 	Graph.prototype.pasteStyle = function(style, cells, keys)
 	{
 		keys = (keys != null) ? keys : Graph.pasteStyles;
-		
+
+		Graph.removeKeys(style, function(key)
+		{
+			return mxUtils.indexOf(keys, key) < 0;
+		});
+
+		this.updateCellStyles(style, cells);
+	};
+			
+	/**
+	 * Removes implicit styles from cell styles so that dark mode works using the
+	 * default values from the stylesheet.
+	 */
+	Graph.prototype.updateCellStyles = function(style, cells)
+	{
 		this.model.beginUpdate();
 		try
 		{
 			for (var i = 0; i < cells.length; i++)
 			{
-				var temp = this.getCurrentCellStyle(cells[i]);
-	
-				for (var j = 0; j < keys.length; j++)
+				if (this.model.isVertex(cells[i]) || this.model.isEdge(cells[i]))
 				{
-					var current = temp[keys[j]];
-					var value = style[keys[j]];
-					
-					if (current != value && (current != null || value != mxConstants.NONE))
+					var cellStyle = this.getCellStyle(cells[i], false);
+
+					for (var key in style)
 					{
-						this.setCellStyles(keys[j], value, [cells[i]]);
+						var value = style[key];
+
+						if (cellStyle[key] != value)
+						{
+							this.setCellStyles(key, value, [cells[i]]);
+						}
 					}
 				}
 			}
@@ -4281,19 +4282,26 @@ Graph.prototype.getLinkTargetForCell = function(cell)
 	{
 		return cell.value.getAttribute('linkTarget');
 	}
-	
+
 	return null;
+};
+
+/**
+ * Adds style post processing steps.
+ */
+Graph.prototype.postProcessCellStyle = function(cell, style)
+{
+	return this.updateHorizontalStyle(cell,this.replaceDefaultColors(cell,
+		mxGraph.prototype.postProcessCellStyle.apply(this, arguments)));
 };
 
 /**
  * Overrides label orientation for collapsed swimlanes inside stack and
  * for partial rectangles inside tables.
  */
-Graph.prototype.getCellStyle = function(cell)
+Graph.prototype.updateHorizontalStyle = function(cell, style)
 {
-	var style = mxGraph.prototype.getCellStyle.apply(this, arguments);
-	
-	if (cell != null && this.layoutManager != null)
+	if (cell != null && style != null && this.layoutManager != null)
 	{
 		var parent = this.model.getParent(cell);
 		
@@ -4309,6 +4317,40 @@ Graph.prototype.getCellStyle = function(cell)
 	}
 	
 	return style;
+};
+
+/**
+ * Replaces default colors. 
+ */
+Graph.prototype.replaceDefaultColors = function(cell, style)
+{
+	if (style != null)
+	{
+		var bg = mxUtils.hex2rgb(this.shapeBackgroundColor);
+		var fg = mxUtils.hex2rgb(this.shapeForegroundColor);
+
+		this.replaceDefaultColor(style, mxConstants.STYLE_FONTCOLOR, fg);
+		this.replaceDefaultColor(style, mxConstants.STYLE_FILLCOLOR, bg);
+		this.replaceDefaultColor(style, mxConstants.STYLE_STROKECOLOR, fg);
+		this.replaceDefaultColor(style, mxConstants.STYLE_IMAGE_BORDER, fg);
+		this.replaceDefaultColor(style, mxConstants.STYLE_IMAGE_BACKGROUND, bg);
+		this.replaceDefaultColor(style, mxConstants.STYLE_LABEL_BORDERCOLOR, fg);
+		this.replaceDefaultColor(style, mxConstants.STYLE_SWIMLANE_FILLCOLOR, bg);
+		this.replaceDefaultColor(style, mxConstants.STYLE_LABEL_BACKGROUNDCOLOR, bg);
+	}
+
+	return style;
+};
+
+/**
+ * Replaces the colors for the given key.
+ */
+Graph.prototype.replaceDefaultColor = function(style, key, value)
+{
+	if (style != null && style[key] == 'default' && value != null)
+	{
+		style[key] = value;
+	}
 };
 
 /**
@@ -5899,6 +5941,116 @@ Graph.prototype.createCrossFunctionalSwimlane = function(rowCount, colCount, w, 
 };
 
 /**
+ * Returns the row and column lines for the given table.
+ */
+Graph.prototype.visitTableCells = function(cell, visitor)
+{
+	var lastRow = null;
+	var rows = this.model.getChildCells(cell, true);
+	var start = this.getActualStartSize(cell, true);
+
+	for (var i = 0; i < rows.length; i++)
+	{
+		var rowStart = this.getActualStartSize(rows[i], true);
+		var cols = this.model.getChildCells(rows[i], true);
+		var lastCol = null;
+		var row = [];
+
+		for (var j = 0; j < cols.length; j++)
+		{
+			var geo = this.getCellGeometry(cols[j]);
+			var col = {cell: cols[j], rospan: 1, colspan: 1, row: i, col: j, geo: geo};
+			geo = (geo.alternateBounds != null) ? geo.alternateBounds : geo;
+			col.point = new mxPoint(geo.width + (lastCol != null ? lastCol.point.x : start.x + rowStart.x),
+				geo.height + (lastRow != null && lastRow[0] != null ? lastRow[0].point.y : start.y + rowStart.y));
+			col.actual = col;
+
+			if (lastRow != null && lastRow[j] != null && lastRow[j].rowspan > 1)
+			{
+				col.rowspan = lastRow[j].rowspan - 1;
+				col.colspan = lastRow[j].colspan;
+				col.actual = lastRow[j].actual;
+			}
+			else
+			{
+				if (lastCol != null && lastCol.colspan > 1)
+				{
+					col.rowspan = lastCol.rowspan;
+					col.colspan = lastCol.colspan - 1;
+					col.actual = lastCol.actual;
+				}
+				else
+				{
+					var style = this.getCurrentCellStyle(cols[j], true);
+
+					if (style != null)
+					{
+						col.rowspan = parseInt(style['rowspan'] || 1);
+						col.colspan = parseInt(style['colspan'] || 1);
+					}
+				}
+			}
+
+			visitor(col, cols.length, rows.length, start.x + rowStart.x, start.y + rowStart.y);
+			row.push(col);
+			lastCol = col;
+		}
+
+		lastRow = row;
+	}
+
+};
+
+/**
+ * Returns the row and column lines for the given table.
+ */
+Graph.prototype.getTableLines = function(cell, horizontal, vertical)
+{
+	var hl = [];
+	var vl = [];
+
+	if (horizontal || vertical)
+	{
+		this.visitTableCells(cell, mxUtils.bind(this, function(iter, colCount, rowCount, x0, y0)
+		{
+			// Constructs horizontal lines
+			if (horizontal && iter.row < rowCount - 1)
+			{
+				if (hl[iter.row] == null)
+				{
+					hl[iter.row] = [new mxPoint(x0, iter.point.y)];
+				}
+
+				if (iter.rowspan > 1)
+				{
+					hl[iter.row].push(null);
+				}
+				
+				hl[iter.row].push(iter.point);
+			}
+
+			// Constructs vertical lines
+			if (vertical && iter.col < colCount - 1)
+			{
+				if (vl[iter.col] == null)
+				{
+					vl[iter.col] = [new mxPoint(iter.point.x, y0)];
+				}
+
+				if (iter.colspan > 1)
+				{
+					vl[iter.col].push(null);
+				}
+				
+				vl[iter.col].push(iter.point);
+			}
+		}));
+	}
+
+	return hl.concat(vl);
+};
+
+/**
  * Returns true if the given cell is a table cell.
  */
 Graph.prototype.isTableCell = function(cell)
@@ -6090,11 +6242,6 @@ Graph.prototype.setTableColumnWidth = function(col, dx, extend)
 				model.setGeometry(table, tgeo);
 			}
 		}
-
-		if (this.layoutManager != null)
-		{
-			this.layoutManager.executeLayout(table);
-		}
 	}
 	finally
 	{
@@ -6178,13 +6325,13 @@ TableLayout.prototype.getRowLayout = function(row, width)
 	
 	for (var i = 0; i < cells.length; i++)
 	{
-		var cell = this.graph.getCellGeometry(cells[i]);
+		var geo = this.graph.getCellGeometry(cells[i]);
 		
-		if (cell != null)
+		if (geo != null)
 		{
-			x += (cell.alternateBounds != null ?
-				cell.alternateBounds.width :
-				cell.width) * rw / sw;
+			x += (geo.alternateBounds != null ?
+				geo.alternateBounds.width :
+				geo.width) * rw / sw;
 			result.push(Math.round(x));
 		}
 	}
@@ -6214,95 +6361,43 @@ TableLayout.prototype.layoutRow = function(row, positions, height, tw, lastCells
 
 	for (var i = 0; i < cells.length; i++)
 	{
-		var cell = this.graph.getCellGeometry(cells[i]);
+		var geo = this.graph.getCellGeometry(cells[i]);
 		
-		if (cell != null)
+		if (geo != null)
 		{
-			cell = cell.clone();
+			geo = geo.clone();
 			
-			cell.y = off.y;
-			cell.height = height - off.y - off.height;
+			geo.y = off.y;
+			geo.height = height - off.y - off.height;
 			
 			if (positions != null)
 			{
-				cell.x = positions[i];
-				cell.width = positions[i + 1] - cell.x;
+				geo.x = positions[i];
+				geo.width = positions[i + 1] - geo.x;
 
-				// Fills with last cell if not enough cells
+				// Fills with last geo if not enough cells
 				if (i == cells.length - 1 && i < positions.length - 2)
 				{
-					cell.width = tw - cell.x - off.x - off.width;
+					geo.width = tw - geo.x - off.x - off.width;
 				}
 			}
 			else
 			{
-				cell.x = x;
-				x += cell.width;
+				geo.x = x;
+				x += geo.width;
 				
 				if (i == cells.length - 1)
 				{
-					cell.width = tw - off.x - off.width - sw;
+					geo.width = tw - off.x - off.width - sw;
 				}
 				else
 				{	
-					sw += cell.width;
+					sw += geo.width;
 				}
 			}
 		
-			cell.alternateBounds = new mxRectangle(0, 0, cell.width, cell.height);
-			model.setGeometry(cells[i], cell);
-		}
-
-		var visible = true;
-
-		// Handles rowspan
-		var upper = lastCells[i];
-
-		if (upper != null && upper.geo != null &&
-			upper.rowspan != null && upper.rowspan > 1)
-		{
-			upper.geo.height += (cell.alternateBounds != null) ?
-				cell.alternateBounds.height : cell.height;
-			visible = false;
-			upper.rowspan--;
-		}
-		else if (upper != null && upper.rowspan == 1)
-		{
-			upper.rowspan--;
-		}
-
-		// Handles colspan
-		if (last != null && last.geo != null &&
-			last.colspan != null && last.colspan > 1)
-		{
-			last.geo.width += (cell.alternateBounds != null) ?
-				cell.alternateBounds.width : cell.width;
-			visible = false;
-			last.colspan--;
-		}
-
-		model.setVisible(cells[i], visible);
-
-		var style = this.graph.getCurrentCellStyle(cells[i], true);
-		var temp = {style: style, cell: cells[i], geo: cell};
-
-		if (style != null)
-		{
-			if (last == null || last.colspan < 1)
-			{
-				temp.colspan = parseInt(style['colspan'] || 0);
-				last = temp;
-			}
-
-			if (upper == null || upper.rowspan < 1)
-			{
-				temp.rowspan = parseInt(style['rowspan'] || 0);
-				lastCells[i] = temp;
-			}
-			else if (upper != null)
-			{
-				temp.colspan = parseInt(upper.style['colspan'] || 0);
-			}
+			geo.alternateBounds = new mxRectangle(0, 0, geo.width, geo.height);
+			model.setGeometry(cells[i], geo);
 		}
 	}
 	
@@ -6398,6 +6493,29 @@ TableLayout.prototype.execute = function(parent)
 					table.width = sw + offset.width + offset.x + Graph.minTableColumnWidth;
 					model.setGeometry(parent, table);
 				}
+
+				// All geometries cloned at this point so can change in-place below
+				this.graph.visitTableCells(parent, mxUtils.bind(this, function(iter)
+				{
+					model.setVisible(iter.cell, iter.actual.cell == iter.cell);
+
+					if (iter.actual.cell != iter.cell)
+					{
+						if (iter.actual.row == iter.row)
+						{
+							var g = (iter.geo.alternateBounds != null) ?
+								iter.geo.alternateBounds : iter.geo;
+							iter.actual.geo.width += g.width;
+						}
+
+						if (iter.actual.col == iter.col)
+						{
+							var g = (iter.geo.alternateBounds != null) ?
+								iter.geo.alternateBounds : iter.geo;
+							iter.actual.geo.height += g.height;
+						}
+					}
+				}));
 			}
 		}
 		finally
@@ -7308,7 +7426,7 @@ if (typeof mxVertexHandler != 'undefined')
 				state.style[key] = this.graph.currentEdgeStyle[key];
 			}
 
-			state.style = this.graph.postProcessCellStyle(state.style);
+			state.style = this.graph.postProcessCellStyle(state.cell, state.style);
 			
 			return state;
 		};
@@ -7414,36 +7532,6 @@ if (typeof mxVertexHandler != 'undefined')
 			}
 			
 			return style;
-		};
-			
-		/**
-		 * Removes implicit styles from cell styles so that dark mode works using the
-		 * default values from the stylesheet.
-		 */
-		Graph.prototype.updateCellStyles = function(key, value, cells)
-		{
-			this.model.beginUpdate();
-			try
-			{
-				for (var i = 0; i < cells.length; i++)
-				{
-					if (this.model.isVertex(cells[i]) || this.model.isEdge(cells[i]))
-					{
-						this.setCellStyles(key, null, [cells[i]]);
-						var style = this.getCellStyle(cells[i]);
-						var temp = style[key];
-						
-						if (value != ((temp == null) ? mxConstants.NONE : temp))
-						{
-							this.setCellStyles(key, value, [cells[i]]);
-						}
-					}
-				}
-			}
-			finally
-			{
-				this.model.endUpdate();
-			}
 		};
 
 		/**
@@ -10249,10 +10337,21 @@ if (typeof mxVertexHandler != 'undefined')
 					var child = model.getChildCells(rows[i], true)[index];
 					var clone = model.cloneCell(child, false);
 					var geo = this.getCellGeometry(clone);
+
+					// Removes value, col/rowspan and alternate bounds
 					clone.value = null;
-					
+					clone.style = mxUtils.setStyle(mxUtils.setStyle(
+						clone.style, 'rowspan', null), 'colspan', null);
+
 					if (geo != null)
 					{
+						if (geo.alternateBounds != null)
+						{
+							geo.width = geo.alternateBounds.width;
+							geo.height = geo.alternateBounds.height;
+							geo.alternateBounds = null;
+						}
+
 						dw = geo.width;
 						var rowGeo = this.getCellGeometry(rows[i]);
 						
@@ -10261,7 +10360,7 @@ if (typeof mxVertexHandler != 'undefined')
 							geo.height = rowGeo.height;
 						}
 					}
-					
+
 					model.add(rows[i], clone, index + ((before) ? 0 : 1));
 				}
 				
@@ -10402,15 +10501,27 @@ if (typeof mxVertexHandler != 'undefined')
 					for (var i = 0; i < cells.length; i++)
 					{
 						var cell = model.cloneCell(cells[i], false);
-						row.insert(cell);
+
+						// Removes value, col/rowspan and alternate bounds
 						cell.value = null;
-						
+						cell.style = mxUtils.setStyle(mxUtils.setStyle(
+							cell.style, 'rowspan', null), 'colspan', null);
+
 						var geo = this.getCellGeometry(cell);
 						
 						if (geo != null)
 						{
+							if (geo.alternateBounds != null)
+							{
+								geo.width = geo.alternateBounds.width;
+								geo.height = geo.alternateBounds.height;
+								geo.alternateBounds = null;
+							}
+
 							geo.height = rowGeo.height;
 						}
+						
+						row.insert(cell);
 					}
 
 					model.add(table, row, index + ((before) ? 0 : 1));
@@ -11904,34 +12015,61 @@ if (typeof mxVertexHandler != 'undefined')
 					-this.getSelectionBorderInset());
 		};
 		
+		var TableLineShape = null;
+
 		/**
 		 * Adds custom handles for table cells.
 		 */
 		var vertexHandlerCreateCustomHandles = mxVertexHandler.prototype.createCustomHandles;
 		mxVertexHandler.prototype.createCustomHandles = function()
 		{
+			// Lazy lookup for shape constructor
+			if (TableLineShape == null)
+			{
+				TableLineShape = mxCellRenderer.defaultShapes['tableLine'];
+			}
+
 			var handles = vertexHandlerCreateCustomHandles.apply(this, arguments);
 			
 			if (this.graph.isTable(this.state.cell))
 			{
+				var self = this;
 				var graph = this.graph;
 				var model = graph.model;
+				var s = graph.view.scale;
 				var tableState = this.state;
 				var sel = this.selectionBorder;
-				var self = this;
+				var x0 = this.state.origin.x + graph.view.translate.x;
+				var y0 = this.state.origin.y + graph.view.translate.y;
 				
 				if (handles == null)
 				{
 					handles = [];
 				}
+
+				function moveLine(line, dx, dy)
+				{
+					var result = [];
+
+					for (var i = 0; i < line.length; i++)
+					{
+						var pt = line[i];
+						result.push((pt == null) ? null : new mxPoint(
+							(x0 + pt.x + dx) * s, (y0 + pt.y + dy) * s));
+					}
+
+					return result;
+				};
 				
 				// Adds handles for rows and columns
 				var rows = graph.view.getCellStates(model.getChildCells(this.state.cell, true));
-				
+
 				if (rows.length > 0)
 				{
 					var cols = model.getChildCells(rows[0].cell, true);
-	
+					var colLines = graph.getTableLines(this.state.cell, false, true);
+					var rowLines = graph.getTableLines(this.state.cell, true, false);
+					
 					// Adds column width handles
 					for (var i = 0; i < cols.length; i++)
 					{
@@ -11945,10 +12083,10 @@ if (typeof mxVertexHandler != 'undefined')
 							{
 								colState = new mxCellState(graph.view, cols[index],
 									graph.getCellStyle(cols[index]));
-								colState.x = tableState.x + geo.x * graph.view.scale;
-								colState.y = tableState.y + geo.y * graph.view.scale;
-								colState.width = g.width * graph.view.scale;
-								colState.height = g.height * graph.view.scale;
+								colState.x = tableState.x + geo.x * s;
+								colState.y = tableState.y + geo.y * s;
+								colState.width = g.width * s;
+								colState.height = g.height * s;
 								colState.updateCachedBounds();
 							}
 
@@ -11956,9 +12094,11 @@ if (typeof mxVertexHandler != 'undefined')
 							var ngeo = (nextCol != null) ? graph.getCellGeometry(nextCol) : null;
 							var ng = (ngeo != null && ngeo.alternateBounds != null) ? ngeo.alternateBounds : ngeo;
 							
-							var shape = new mxLine(new mxRectangle(), mxConstants.NONE, 1, true);
+							var shape = (colLines[index] != null) ?
+								new TableLineShape(colLines[index], mxConstants.NONE, 1) :
+								new mxLine(new mxRectangle(), mxConstants.NONE, 1, true);
 							shape.isDashed = sel.isDashed;
-							
+
 							// Workaround for event handling on overlapping cells with tolerance
 							shape.svgStrokeTolerance++;
 							var handle = new mxHandle(colState, 'col-resize', null, shape);
@@ -11970,18 +12110,24 @@ if (typeof mxVertexHandler != 'undefined')
 
 							handle.redraw = function()
 							{
-								if (this.shape != null)
+								if (this.shape != null && this.state.shape != null)
 								{
-									var start = graph.getActualStartSize(tableState.cell);
 									this.shape.stroke = (dx == 0) ? mxConstants.NONE : sel.stroke;
-									this.shape.bounds.x = this.state.x + (g.width +
-										dx) * this.graph.view.scale;
-									this.shape.bounds.width = 1;
-									this.shape.bounds.y = tableState.y + ((index == cols.length - 1) ?
-										0 : start.y * this.graph.view.scale);
-									this.shape.bounds.height = tableState.height -
-										((index == cols.length - 1) ? 0 :
-										(start.height + start.y) * this.graph.view.scale);
+
+									if (this.shape.constructor == TableLineShape)
+									{
+										this.shape.line = moveLine(colLines[index], dx, 0);
+										this.shape.updateBoundsFromLine();
+									}
+									else
+									{
+										var start = graph.getActualStartSize(tableState.cell, true);
+										this.shape.bounds.width = 1;
+										this.shape.bounds.x = this.state.x + (g.width + dx) * s;
+										this.shape.bounds.y = tableState.y + ((index == cols.length - 1) ? 0 : start.y * s);
+										this.shape.bounds.height = tableState.height - ((index == cols.length - 1) ? 0 : (start.height + start.y) * s);
+									}
+									
 									this.shape.redraw();
 								}
 							};
@@ -12041,10 +12187,12 @@ if (typeof mxVertexHandler != 'undefined')
 							var ngeo = (nextRow != null) ? graph.getCellGeometry(nextRow.cell) : null;
 							var ng = (ngeo != null && ngeo.alternateBounds != null) ? ngeo.alternateBounds : ngeo;
 							
-							var shape = new mxLine(new mxRectangle(), mxConstants.NONE, 1);
+							var shape = (rowLines[index] != null) ?
+								new TableLineShape(rowLines[index], mxConstants.NONE, 1) :
+								new mxLine(new mxRectangle(), mxConstants.NONE, 1, false);
 							shape.isDashed = sel.isDashed;
 							shape.svgStrokeTolerance++;
-							
+
 							var handle = new mxHandle(rowState, 'row-resize', null, shape);
 							handle.tableHandle = true;
 							var dy = 0;
@@ -12057,11 +12205,21 @@ if (typeof mxVertexHandler != 'undefined')
 								if (this.shape != null && this.state.shape != null)
 								{
 									this.shape.stroke = (dy == 0) ? mxConstants.NONE : sel.stroke;
-									this.shape.bounds.x = this.state.x;
-									this.shape.bounds.width = this.state.width;
-									this.shape.bounds.y = this.state.y + this.state.height +
-										dy * this.graph.view.scale;
-									this.shape.bounds.height = 1;
+
+									if (this.shape.constructor == TableLineShape)
+									{
+										this.shape.line = moveLine(rowLines[index], 0, dy);
+										this.shape.updateBoundsFromLine();
+									}
+									else
+									{
+										var start = graph.getActualStartSize(tableState.cell, true);
+										this.shape.bounds.height = 1;
+										this.shape.bounds.y = this.state.y + this.state.height + dy * s;
+										this.shape.bounds.x = tableState.x + ((index == rows.length - 1) ? 0 : start.x * s);
+										this.shape.bounds.width = tableState.width - ((index == rows.length - 1) ? 0 : (start.width + start.x) + s);
+									}
+
 									this.shape.redraw();
 								}
 							};
