@@ -126,11 +126,13 @@ EditorUi.initMinimalTheme = function()
 	    if (ui.sidebarWindow == null)
 	    {
 			var w = Math.min(graph.container.clientWidth - 10, 218);
+			var h = Math.min(graph.container.clientHeight - 40, 650);
 	        
-			ui.sidebarWindow = new WrapperWindow(ui, mxResources.get('shapes'), 10,
-				(urlParams['sketch'] == '1' && urlParams['embedInline'] != '1') ? 15 : 56,
-				w - 6, Math.min(650, graph.container.clientHeight - 30),
-				function(container)
+			ui.sidebarWindow = new WrapperWindow(ui, mxResources.get('shapes'),
+				(urlParams['sketch'] == '1' && urlParams['embedInline'] != '1') ? 66 : 10,
+				(urlParams['sketch'] == '1' && urlParams['embedInline'] != '1') ?
+					Math.max(30, (graph.container.clientHeight - h) / 2) : 56,
+				w - 6, h - 6, function(container)
 			{
 				var div = document.createElement('div');
 				div.style.cssText = 'position:absolute;left:0;right:0;border-top:1px solid lightgray;' +
@@ -451,6 +453,7 @@ EditorUi.initMinimalTheme = function()
 			'html body .geToolbarButton { opacity: 0.3; }' +
 			'html body .geToolbarButton:active { opacity: 0.15; }' +
 			'html body .geStatus:active { opacity: 0.5; }' +
+			'.geStatus > div { box-sizing: border-box; max-width: 100%; text-overflow: ellipsis; }' +
 			'html body .geStatus { padding-top:3px !important; }' +
 			'html body .geMenubarContainer .geStatus { margin-top: 0px !important; }' +
 			'html table.mxPopupMenu tr.mxPopupMenuItemHover:active { opacity: 0.7; }' +
@@ -475,7 +478,7 @@ EditorUi.initMinimalTheme = function()
 			'.mxWindow div button.geStyleButton { box-sizing: border-box; }' +
 			'table.mxWindow td.mxWindowPane button.geColorBtn { padding:0px; box-sizing: border-box; }' +
 			'td.mxWindowPane .geSidebarContainer button { padding:2px; box-sizing: border-box; }' +
-			'html body .geMenuItem { font-size:14px; text-decoration: none; font-weight: normal; padding: 6px 10px 6px 10px; border: none; border-radius: 5px; color: #353535; box-shadow: inset 0 0 0 1px rgba(0,0,0,.11), inset 0 -1px 0 0 rgba(0,0,0,.08), 0 1px 2px 0 rgba(0,0,0,.04); }' +
+			'html body .geMenuItem { font-size:14px; text-decoration: none; font-weight: normal; padding: 6px 10px 6px 10px; border: none; border-radius: 5px; color: #353535; box-shadow: inset 0 0 0 1px rgba(0,0,0,.11), inset 0 -1px 0 0 rgba(0,0,0,.08), 0 1px 2px 0 rgba(0,0,0,.04); ' + (EditorUi.isElectronApp? 'app-region: no-drag; ' : '') + '}' +
 			// Styling for Minimal
 			'.geTabContainer { border-bottom:1px solid lightgray; border-top:1px solid lightgray; background: ' + (Editor.isDarkMode() ? Editor.darkColor : '#fff') + ' !important; }' +
 			'.geToolbarContainer { background: ' + (Editor.isDarkMode() ? Editor.darkColor : '#fff') + '; }' +
@@ -1127,16 +1130,22 @@ EditorUi.initMinimalTheme = function()
             	ui.menus.addSubmenu('importFrom', menu, parent);
             }
 
+			menu.addSeparator(parent);
+
 			if (urlParams['sketch'] != '1')
 			{
-				ui.menus.addMenuItems(menu, ['-', 'outline'], parent);
-				
-				if (ui.commentsSupported())
-				{
-					ui.menus.addMenuItems(menu, ['comments'], parent);
-				}
+				ui.menus.addMenuItems(menu, ['outline'], parent);
 			}
-			
+			else if (file != null && file.constructor == DriveFile)
+			{
+				ui.menus.addMenuItems(menu, ['share'], parent);
+			}
+
+			if (ui.commentsSupported())
+			{
+				ui.menus.addMenuItems(menu, ['comments'], parent);
+			}
+
 			ui.menus.addMenuItems(menu, ['-', 'findReplace',
 				'layers', 'tags', '-', 'pageSetup'], parent);
 
@@ -1268,7 +1277,7 @@ EditorUi.initMinimalTheme = function()
         // Extras menu is labelled preferences but keeps ID for extensions
         this.put('extras', new Menu(mxUtils.bind(this, function(menu, parent)
         {
-			if (urlParams['embed'] != '1' && urlParams['extAuth'] != '1')
+			if (urlParams['embed'] != '1' && urlParams['extAuth'] != '1' && ui.mode != App.MODE_ATLAS)
 			{
 				ui.menus.addSubmenu('theme', menu, parent);
 			}
@@ -1284,7 +1293,7 @@ EditorUi.initMinimalTheme = function()
 
 			if (urlParams['embedInline'] != '1')
 			{
-				if (urlParams['embed'] != '1' && (isLocalStorage || mxClient.IS_CHROMEAPP))
+				if (urlParams['embed'] != '1' && (isLocalStorage || mxClient.IS_CHROMEAPP) && ui.mode != App.MODE_ATLAS)
 				{
 					ui.menus.addMenuItems(menu, ['-', 'showStartScreen', 'search', 'scratchpad'], parent);
 				}
@@ -1296,14 +1305,21 @@ EditorUi.initMinimalTheme = function()
 			}
 
 			menu.addSeparator(parent);
-        	ui.menus.addMenuItem(menu, 'configuration', parent);
+			
+			if(ui.mode != App.MODE_ATLAS) 
+			{
+				ui.menus.addMenuItem(menu, 'configuration', parent);
+			}
 
 			if (!ui.isOfflineApp() && isLocalStorage && ui.mode != App.MODE_ATLAS)
 			{
 	        	ui.menus.addMenuItem(menu, 'plugins', parent);
 			}
-
-			this.addMenuItems(menu, ['-', 'fullscreen'], parent);
+			
+			if(ui.mode != App.MODE_ATLAS) 
+			{
+				this.addMenuItems(menu, ['-', 'fullscreen'], parent);
+			}
 
 			if (Editor.isDarkMode() || (!mxClient.IS_IE && !mxClient.IS_IE11))
 			{
@@ -1972,20 +1988,6 @@ EditorUi.initMinimalTheme = function()
 			picker.style.display = 'none';
 		}));
 
-		// Stops panning while freehand is active
-		if (Graph.touchStyle)
-		{
-			graph.panningHandler.isPanningTrigger = function(me)
-			{
-				var evt = me.getEvent();
-				
-			 	return (me.getState() == null && (!mxEvent.isMouseEvent(evt) &&
-					!graph.freehand.isDrawing())) ||
-			 		(mxEvent.isPopupTrigger(evt) && (me.getState() == null ||
-			 		mxEvent.isControlDown(evt) || mxEvent.isShiftDown(evt)));
-			};
-		}		
-
 		// Hides hover icons if freehand is active
 		if (ui.hoverIcons != null)
 		{
@@ -2226,7 +2228,7 @@ EditorUi.initMinimalTheme = function()
 					var toggleShapesAction = ui.actions.get('toggleShapes');
 					addAction(toggleShapesAction, mxResources.get('shapes') + ' (' + toggleShapesAction.shortcut + ')', insertImage);
 
-					elt = addMenu('table', null, Editor.tableImage);
+					elt = addMenu('table', null, Editor.calendarImage);
 					elt.style.boxShadow = 'none';
 					elt.style.opacity = '0.7';
 					elt.style.padding = '6px';
@@ -2234,7 +2236,7 @@ EditorUi.initMinimalTheme = function()
 					elt.style.width = '37px';
 					addElt(elt, null, 'pointer');
 
-					addAction(ui.actions.get('insertTemplate'), mxResources.get('template'), Editor.templateImage);
+					addAction(ui.actions.get('insertTemplate'), mxResources.get('template'), Editor.addImage);
 				}
 
 				if (urlParams['embedInline'] != '1')

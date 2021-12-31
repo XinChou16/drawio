@@ -8,12 +8,12 @@
 	var mxPopupMenuShowMenu = mxPopupMenu.prototype.showMenu;
 	mxPopupMenu.prototype.showMenu = function()
 	{
-		mxPopupMenuShowMenu.apply(this, arguments);
-		
 		this.div.style.overflowY = 'auto';
 		this.div.style.overflowX = 'hidden';
 		var h0 = Math.max(document.body.clientHeight, document.documentElement.clientHeight);
-		this.div.style.maxHeight = (h0 - 10) + 'px';
+		this.div.style.maxHeight = (h0 - (EditorUi.isElectronApp? 50 : 10)) + 'px'; //In Electron and without titlebar, the top item is not selectable
+
+		mxPopupMenuShowMenu.apply(this, arguments);
 	};
 	
 	Menus.prototype.createHelpLink = function(href)
@@ -2268,7 +2268,7 @@
 			{
 				editorUi.actions.addAction('plugins...', function()
 				{
-					editorUi.showDialog(new PluginsDialog(editorUi).container, 360, 170, true, false);
+					editorUi.showDialog(new PluginsDialog(editorUi).container, 380, 240, true, false);
 				});
 			}
 		}
@@ -3688,6 +3688,21 @@
 			}
 		})));
 		
+		if (EditorUi.isElectronApp)
+		{
+			var enableSpellCheck = urlParams['enableSpellCheck'] == '1';
+
+			var spellCheckAction = editorUi.actions.addAction('spellCheck', function()
+			{
+				editorUi.toggleSpellCheck();
+				enableSpellCheck = !enableSpellCheck;
+				editorUi.alert(mxResources.get('restartForChangeRequired'));
+			});
+			
+			spellCheckAction.setToggleAction(true);
+			spellCheckAction.setSelectedCallback(function() { return enableSpellCheck; });
+		}
+
 		this.put('extras', new Menu(mxUtils.bind(this, function(menu, parent)
 		{
 			if (urlParams['noLangIcon'] == '1')
@@ -3711,7 +3726,12 @@
 					this.addLinkToItem(item, 'https://www.diagrams.net/doc/faq/math-typesetting');
 				}
 			}
-			
+	
+			if (EditorUi.isElectronApp)
+			{
+				this.addMenuItems(menu, ['spellCheck'], parent);	
+			}
+
 			this.addMenuItems(menu, ['copyConnect', 'collapseExpand', '-'], parent);
 			
 			if (urlParams['embed'] != '1' && (isLocalStorage || mxClient.IS_CHROMEAPP))

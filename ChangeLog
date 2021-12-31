@@ -1,3 +1,77 @@
+30-DEC-2021: 16.1.2
+
+- Adds fillStyle dropdown for image background
+
+29-DEC-2021: 16.1.1
+
+- Avoids creating Blob for parseFile
+- Fixes dimension shape with large stroke size https://github.com/jgraph/drawio/issues/271
+- Hides foreign object warnings in background pages
+- Fixes overflows in minimal and sketch theme https://github.com/jgraph/drawio/issues/2509
+- Fixes freehand mode for Apple pencil on iOS https://github.com/jgraph/drawio/issues/2510
+- Adds tableRow shape, fixes events for merged cells
+- Uses clip path attribute for SVG image clipping
+- Fixes default label background for imported images
+- Fits image to clipPath bounding box
+- Fixes collapsed table foreground https://github.com/jgraph/drawio/issues/2512
+- Fixes overflow in LinkDialog
+- Disables child layout for collapsed cells
+
+23-DEC-2021: 16.1.0
+
+- Fixes inconsistent event cursors on table lines
+- Fixes default lanecolor for UML frame
+- [conf cloud] Reduces number of comments requests
+- Refactor structure of WEB-INF folder
+
+21-DEC-2021: 16.0.3
+
+- Adds Share and Comments in sketch File menu
+- Fixes no stroke in Roughjs, adds swimlaneHead/Body
+- Uses persisted default grid color
+- Fixes rendering and tooltips for special colors
+- Fixes initial placement of shapes window
+- Uses Pusher 7.0.3 to fix NPE
+
+21-DEC-2021: 16.0.2
+
+- Re-build
+
+21-DEC-2021: 16.0.1
+
+- Fixes possible NPE
+
+17-DEC-2021: 16.0.0
+
+The reason for going to version 16 is there is a breaking change in the docker image. The 
+default base image used has been changed because the previous image was not supported. There 
+is no breaking change in the editor codebase, but the docker images follow the same numbering.
+
+- Fixes clipping on initial arrow drop down https://github.com/jgraph/drawio/issues/2482
+- Fixes table and template icon in sketch mode
+- Restores sync problem icon
+- Hides Cmd+R keyboard shortcut in Safari https://github.com/jgraph/drawio/issues/1757
+- Moves selection state to EditorUi
+- Added scrollbar to layersDialog in GraphViewer https://github.com/jgraph/drawio/issues/1347
+- Added dark mode support for Mermaid https://github.com/jgraph/drawio-desktop/issues/785
+- [conf cloud] Added minorEdit for page changes just in case it is effective
+
+13-DEC-2021: 15.9.6
+
+- Fixes NPE for wheel event in outline window
+
+13-DEC-2021: 15.9.5
+
+- Ctrl disables copy if enabled by default
+- Uses action state for (un)group buttons
+- Altered AWS group styles for better usability
+- Fixes no pointerEvents for no (fill)opacity
+- Fixes for AWS container usability
+- Uses lazyZoom and adds trackpad in outline window
+- Fixes dark mode support in browser picker
+- Fixes ignored stroke option in SVG getBBox https://github.com/jgraph/drawio/issues/2484
+- 
+
 08-DEC-2021: 15.9.4
 
 - Adds mxShape.intersectsRectangle
